@@ -1,0 +1,17 @@
+<package>
+  <description brief="serial_node">
+
+     serial_sender
+
+  </description>
+  <author>Jarvis</author>
+  <license>BSD</license>
+  <review status="unreviewed" notes=""/>
+  <url>http://ros.org/wiki/serial_sender</url>
+  <depend package="command_msgs"/>
+  <depend package="std_msgs"/>
+  <depend package="roscpp"/>
+
+</package>
+
+
