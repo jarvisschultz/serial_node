@@ -350,8 +350,12 @@ bool GetData(const unsigned char type, const int id, float *val1, float *val2, f
 	    *val2 = InterpNumber(&data[5]);
 	    *val3 = InterpNumber(&data[8]);
 	    return read_flag;
-	}	    
+	}
+	else
+	    ROS_WARN("Full string received, but not valid");
     }
+    else
+	ROS_WARN("Not enough data received");
 
     // Then let's estimate the data:
     *val1 = 0.0;
