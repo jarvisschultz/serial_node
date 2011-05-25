@@ -89,7 +89,7 @@ void keyboardcb(const ros::TimerEvent& e)
       else
 	{
 	  ROS_INFO("Stopping Robots and Closing Serial Access"); 
-	  ros::param::set("/system_condition", 3);
+	  ros::param::set("/operating_condition", 4);
 	  exit_flag = true;
 	}
     }
