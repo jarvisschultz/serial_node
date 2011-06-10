@@ -39,7 +39,6 @@
 #define	    BAUDRATE		B115200
 #define	    MODEMDEVICE		"/dev/ttyUSB0"
 #define     _POSIX_SOURCE	1 /* POSIX compliant source */
-#define     PI			3.141519265
 #define     PACKET_SIZE		12
 
 
@@ -330,14 +329,26 @@ bool GetData(const unsigned char type, const int id, float *val1, float *val2, f
     bool read_flag = true;
     unsigned char szPtr[128];
     unsigned char data[128];
+    static int request_length = 3;
+    int i = 0;
     memset(szPtr, 0, sizeof(szPtr));
     memset(data, 0, sizeof(data));
         
     // First we need to send out the request for the robot to send its
     // data:
-    MakeString(szPtr, type, 0.0, 0.0, 0.0, 3);
-    sendData(id, szPtr);
-
+    // MakeString(szPtr, type, 0.0, 0.0, 0.0, 3);
+    // sendData(id, szPtr);
+    szPtr[0] = type;
+    szPtr[1] = (id+0x30);
+    szPtr[2] = 0xFF-((type+id+0x30) & 0xFF);
+    
+    write(fd, szPtr, request_length);
+    fsync(fd);
+    ROS_INFO("Sending String:");
+    for(i = 0; i < request_length; i++)
+	printf("%X ",szPtr[i]);
+    printf("\n");
+    
     // Now, we need to get the data sent back:
     if(ReadSerial(data))
     {
@@ -402,7 +413,7 @@ int ReadSerial(unsigned char *data)
     bufptr = data;
 
     // Let's try to read in the sent command a few times:
-    for (count = 0; count < PACKET_SIZE; count++)
+    for (count = 0; count < 10*PACKET_SIZE; count++)
     {
 	if((nbytes = read(fd, bufptr, PACKET_SIZE)) == -1)
 	    ROS_WARN("Read Error!");
