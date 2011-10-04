@@ -74,7 +74,8 @@ void keyboardcb(const ros::TimerEvent& e)
 {
     //ROS_DEBUG("keyboardcb triggered\n");
   
-    // check kbhit() to see if there was a keyboard strike and transfer_flag to see if there is a node sending serial data
+    // check kbhit() to see if there was a keyboard strike and
+    // transfer_flag to see if there is a node sending serial data
     if(kbhit()) 
     {
 	ROS_DEBUG("Keyboard Strike Detected\n");
@@ -227,7 +228,7 @@ void sendData(int id, unsigned char *DataString)
     fsync(fd);
     ROS_INFO("Sending String:");
     for(i = 0; i < PACKET_SIZE; i++)
-	printf("%X ",(unsigned char) packet[i]);
+	printf("%02X ",(unsigned char) packet[i]);
     printf("\n");
 }
 
@@ -346,7 +347,7 @@ bool GetData(const unsigned char type, const int id, float *val1, float *val2, f
     fsync(fd);
     ROS_INFO("Sending String:");
     for(i = 0; i < request_length; i++)
-	printf("%X ",szPtr[i]);
+	printf("%02X ",szPtr[i]);
     printf("\n");
     
     // Now, we need to get the data sent back:
@@ -423,7 +424,8 @@ int ReadSerial(unsigned char *data)
 	if (bytes_read >= PACKET_SIZE)
 	{
 	    ROS_INFO("Received: ");
-	    for (nbytes = 0; nbytes < 12; nbytes++) printf("%X ", (unsigned char) data[nbytes]);
+	    for (nbytes = 0; nbytes < 12; nbytes++)
+		printf("%02X ", (unsigned char) data[nbytes]);
 	    printf("\n");
 	    successful_read = 1;
 	    break;
