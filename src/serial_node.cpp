@@ -33,28 +33,35 @@
 
 #include "puppeteer_msgs/speed_command.h"
 #include "puppeteer_msgs/position_request.h"
-
+#include "puppeteer_msgs/long_command.h"
 
 /*****DEFINITIONS *************************************************************/
 #define	    BAUDRATE		B115200
 #define	    MODEMDEVICE		"/dev/ttyUSB0"
 #define     _POSIX_SOURCE	1 /* POSIX compliant source */
+#define     SHORT_PACKET_SIZE	3
 #define     PACKET_SIZE		12
-
+#define	    LONG_PACKET_SIZE	18
 
 /*****DECLARATIONS ************************************************************/
-void sendData(int, unsigned char *);
+void sendData(int, unsigned char *, unsigned int);
 void initComm(void);
 void BuildNumber(unsigned char *, float, short int);
 void MakeString(unsigned char *, char, float, float, float, int);
+void MakeLongString(unsigned char *, char,
+		    float, float, float, float, float, int);
 void stopRobots(void);
 bool GetData(const unsigned char, const int, float *, float *, float *);
 int DataChecker(const unsigned char, const unsigned char *);
 int ReadSerial(unsigned char *);
 float InterpNumber(const unsigned char *);
 void keyboardcb(const ros::TimerEvent &);
-bool commandcb(puppeteer_msgs::speed_command::Request &, puppeteer_msgs::speed_command::Response &);
-bool requestcb(puppeteer_msgs::position_request::Request &, puppeteer_msgs::position_request::Response &);
+bool commandcb(puppeteer_msgs::speed_command::Request &,
+	       puppeteer_msgs::speed_command::Response &);
+bool requestcb(puppeteer_msgs::position_request::Request &,
+	       puppeteer_msgs::position_request::Response &);
+bool longcb(puppeteer_msgs::long_command::Request &,
+	    puppeteer_msgs::long_command::Response &);
 
 
 /*****GLOBALS *****************************************************************/
@@ -98,7 +105,8 @@ void keyboardcb(const ros::TimerEvent& e)
 }
 
 
-bool commandcb(puppeteer_msgs::speed_command::Request &req, puppeteer_msgs::speed_command::Response &res)
+bool commandcb(puppeteer_msgs::speed_command::Request &req,
+	       puppeteer_msgs::speed_command::Response &res)
 {
     if(exit_flag == false) 
     { 
@@ -107,9 +115,38 @@ bool commandcb(puppeteer_msgs::speed_command::Request &req, puppeteer_msgs::spee
 	unsigned char dataPtr[128];
 
 	MakeString(dataPtr, req.type, req.Vleft, req.Vright, req.Vtop, req.div);
-	sendData(req.robot_index, dataPtr);
+	sendData(req.robot_index, dataPtr, PACKET_SIZE);
 
-	// If data sent with no errors, we set the response to an affirmitive value.
+	 // If data sent with no errors, we set the response to an
+	 // affirmitive value.
+	 res.error = false;
+
+	 ROS_DEBUG("Send Complete");
+     }
+     else
+     {
+	 ROS_DEBUG("Send Request Denied");
+	 res.error = true;
+     }
+
+     return true;
+ }
+
+ bool longcb(puppeteer_msgs::long_command::Request &req,
+	     puppeteer_msgs::long_command::Response &res)
+ {
+     if(exit_flag == false) 
+     { 
+	 ROS_DEBUG("Sending Received Data");
+
+	 unsigned char dataPtr[128];
+
+	 MakeLongString(dataPtr, req.type, req.num1, req.num2, req.num3,
+			req.num4, req.num5, req.div);
+	 sendData(req.robot_index, dataPtr, LONG_PACKET_SIZE);
+
+	// If data sent with no errors, we set the response to an
+	// affirmitive value.
 	res.error = false;
       
 	ROS_DEBUG("Send Complete");
@@ -124,7 +161,9 @@ bool commandcb(puppeteer_msgs::speed_command::Request &req, puppeteer_msgs::spee
 }
 
 
-bool requestcb(puppeteer_msgs::position_request::Request &req, puppeteer_msgs::position_request::Response &res)
+
+bool requestcb(puppeteer_msgs::position_request::Request &req,
+	       puppeteer_msgs::position_request::Response &res)
 {
     if(exit_flag == false) 
     { 
@@ -156,28 +195,6 @@ bool requestcb(puppeteer_msgs::position_request::Request &req, puppeteer_msgs::p
 }
 
 
-/*****MAIN *************************************************************/
-
-int main(int argc, char** argv)
-{
-    ros::init(argc, argv, "serial_node");
-    ros::NodeHandle n;
-
-    // Initialize communication
-    initComm();
-
-    // Define the callback function:
-    ros::ServiceServer command_srv = n.advertiseService("speed_command", commandcb);
-    ros::ServiceServer request_srv = n.advertiseService("position_request", requestcb);
-    ros::Timer kb_timer = n.createTimer(ros::Duration(0.02), keyboardcb);
-
-    ROS_INFO("Starting Serial Node...");
-
-    // Wait for new data:
-    ros::spin();
-}
-
-
 /*****FUNCTIONS ***************************************************************/
 
 void stopRobots(void)
@@ -188,7 +205,7 @@ void stopRobots(void)
     // Let's make the data string:
     MakeString(szBufferToTransfer, 'q', 0.0, 0.0, 0.0, 3);
     // Now let's send out the data string:
-    sendData(robot_id, szBufferToTransfer);
+    sendData(robot_id, szBufferToTransfer, PACKET_SIZE);
 
     // Set the robot_id value for the next call of this function:
     if (robot_id == 9) robot_id = 1;
@@ -197,10 +214,10 @@ void stopRobots(void)
 }
 
 
-void sendData(int id, unsigned char *DataString)
+void sendData(int id, unsigned char *DataString, unsigned int len)
 {
     char packet[128];
-    int i = 0;
+    unsigned int i = 0;
     unsigned short address =  0;
     unsigned int checksum = 0;
 
@@ -212,22 +229,22 @@ void sendData(int id, unsigned char *DataString)
     // Now we can begin filling in the packet:
     packet[0] = DataString[0];
     sprintf(&packet[1],"%1d",address);
-    for(i = 2; i < PACKET_SIZE-1; i++)
+    for(i = 2; i < len-1; i++)
 	packet[i] = DataString[i-1];
 
     // Now, let's calculate a checksum:
     checksum = 0;
-    for(i = 0; i < PACKET_SIZE-1; i++)
+    for(i = 0; i < len-1; i++)
 	checksum += packet[i];
 
     checksum = 0xFF-(checksum & 0xFF);
 
-    packet[PACKET_SIZE-1] = checksum;    
+    packet[len-1] = checksum;    
       
-    write(fd, packet, PACKET_SIZE);
+    write(fd, packet, len);
     fsync(fd);
     ROS_INFO("Sending String:");
-    for(i = 0; i < PACKET_SIZE; i++)
+    for(i = 0; i < len; i++)
 	printf("%02X ",(unsigned char) packet[i]);
     printf("\n");
 }
@@ -322,6 +339,21 @@ void MakeString(unsigned char *dest, char type, float fval,
     BuildNumber((dest+1), fval, div);
     BuildNumber((dest+4), sval, div);
     BuildNumber((dest+7), tval, div);
+
+    return;
+}
+
+
+void MakeLongString(unsigned char *dest, char type, float val1,
+		    float val2, float val3, float val4, float val5, int div)
+{
+    *dest = type;
+    BuildNumber((dest+1), val1, div);
+    BuildNumber((dest+4), val2, div);
+    BuildNumber((dest+7), val3, div);
+    BuildNumber((dest+10), val4, div);
+    BuildNumber((dest+13), val5, div);
+    return;
 }
 
 
@@ -330,23 +362,20 @@ bool GetData(const unsigned char type, const int id, float *val1, float *val2, f
     bool read_flag = true;
     unsigned char szPtr[128];
     unsigned char data[128];
-    static int request_length = 3;
     int i = 0;
     memset(szPtr, 0, sizeof(szPtr));
     memset(data, 0, sizeof(data));
         
     // First we need to send out the request for the robot to send its
     // data:
-    // MakeString(szPtr, type, 0.0, 0.0, 0.0, 3);
-    // sendData(id, szPtr);
     szPtr[0] = type;
     szPtr[1] = (id+0x30);
     szPtr[2] = 0xFF-((type+id+0x30) & 0xFF);
     
-    write(fd, szPtr, request_length);
+    write(fd, szPtr, SHORT_PACKET_SIZE);
     fsync(fd);
     ROS_INFO("Sending String:");
-    for(i = 0; i < request_length; i++)
+    for(i = 0; i < SHORT_PACKET_SIZE; i++)
 	printf("%02X ",szPtr[i]);
     printf("\n");
     
@@ -457,3 +486,30 @@ float InterpNumber(const unsigned char *data)
 
     return numf;
 }
+
+
+/*****MAIN *************************************************************/
+
+int main(int argc, char** argv)
+{
+    ros::init(argc, argv, "serial_node");
+    ros::NodeHandle n;
+
+    // Initialize communication
+    initComm();
+
+    // Define the callback function:
+    ros::ServiceServer command_srv =
+	n.advertiseService("speed_command", commandcb);
+    ros::ServiceServer command_srv2 =
+	n.advertiseService("long_command", longcb);
+    ros::ServiceServer request_srv =
+	n.advertiseService("position_request", requestcb);
+    ros::Timer kb_timer = n.createTimer(ros::Duration(0.02), keyboardcb);
+
+    ROS_INFO("Starting Serial Node...");
+
+    // Wait for new data:
+    ros::spin();
+}
+
