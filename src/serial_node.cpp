@@ -14,8 +14,9 @@
 
   
 /*****INCLUDES ****************************************************************/
-#include "ros/ros.h"
-#include "std_msgs/String.h"
+#include <ros/ros.h>
+#include <std_msgs/String.h>
+#include <geometry_msgs/PointStamped.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -72,6 +73,10 @@ struct termios oldtio,newtio;
 struct timespec stopdelay = {0, 200000000};
 struct timespec delayrem;
 unsigned char packet_prev[128];
+// Define publisher for publishing the value handled by
+// serial_node.  We do this because we cannot bag service calls
+// currently
+ros::Publisher pub;
 
 
 /*****CALLBACKS ***************************************************************/
@@ -95,9 +100,9 @@ void keyboardcb(const ros::TimerEvent& e)
 	}
 	else
 	{
-	  ROS_INFO("Stopping Robots and Closing Serial Access"); 
-	  ros::param::set("/operating_condition", 4);
-	  exit_flag = true;
+	    ROS_INFO("Stopping Robots and Closing Serial Access"); 
+	    ros::param::set("/operating_condition", 4);
+	    exit_flag = true;
 	}
     }
   
@@ -108,6 +113,9 @@ void keyboardcb(const ros::TimerEvent& e)
 bool commandcb(puppeteer_msgs::speed_command::Request &req,
 	       puppeteer_msgs::speed_command::Response &res)
 {
+    // Create a new variable to publish:
+    geometry_msgs::PointStamped cmd;
+    
     if(exit_flag == false) 
     { 
 	ROS_DEBUG("Sending Received Data");
@@ -117,39 +125,61 @@ bool commandcb(puppeteer_msgs::speed_command::Request &req,
 	MakeString(dataPtr, req.type, req.Vleft, req.Vright, req.Vtop, req.div);
 	sendData(req.robot_index, dataPtr, PACKET_SIZE);
 
-	 // If data sent with no errors, we set the response to an
-	 // affirmitive value.
-	 res.error = false;
+	// If data sent with no errors, we set the response to an
+	// affirmitive value.
+	res.error = false;
 
-	 ROS_DEBUG("Send Complete");
-     }
-     else
-     {
-	 ROS_DEBUG("Send Request Denied");
-	 res.error = true;
-     }
+	ROS_DEBUG("Send Complete");
+	ROS_DEBUG("Fill out message to publish data");
+	cmd.header.frame_id = req.type;
+	cmd.header.stamp = ros::Time::now();
+	cmd.point.x = req.Vleft;
+	cmd.point.y = req.Vright;
+	cmd.point.z = req.Vtop;
 
-     return true;
- }
+	pub.publish(cmd);
+    }
+    else
+    {
+	ROS_DEBUG("Send Request Denied");
+	res.error = true;
+    }
+    
+    return true;
+}
 
- bool longcb(puppeteer_msgs::long_command::Request &req,
-	     puppeteer_msgs::long_command::Response &res)
- {
-     if(exit_flag == false) 
-     { 
-	 ROS_DEBUG("Sending Received Data");
+bool longcb(puppeteer_msgs::long_command::Request &req,
+	    puppeteer_msgs::long_command::Response &res)
+{
+    // Create a new variable to publish:
+    geometry_msgs::PointStamped cmd;
+    
+    if(exit_flag == false) 
+    { 
+	ROS_DEBUG("Sending Received Data");
 
-	 unsigned char dataPtr[128];
+	unsigned char dataPtr[128];
 
-	 MakeLongString(dataPtr, req.type, req.num1, req.num2, req.num3,
-			req.num4, req.num5, req.div);
-	 sendData(req.robot_index, dataPtr, LONG_PACKET_SIZE);
+	MakeLongString(dataPtr, req.type, req.num1, req.num2, req.num3,
+		       req.num4, req.num5, req.div);
+	sendData(req.robot_index, dataPtr, LONG_PACKET_SIZE);
 
 	// If data sent with no errors, we set the response to an
 	// affirmitive value.
 	res.error = false;
       
 	ROS_DEBUG("Send Complete");
+
+	cmd.header.frame_id = req.type;
+	cmd.header.stamp = ros::Time::now();
+	cmd.point.x = req.num1;
+	cmd.point.y = req.num2;
+	cmd.point.z = req.num3;
+	pub.publish(cmd);
+	cmd.point.x = req.num4;
+	cmd.point.y = req.num5;
+	cmd.point.z = 0.0;
+	pub.publish(cmd);
     }
     else
     {
@@ -498,7 +528,7 @@ int main(int argc, char** argv)
     // Initialize communication
     initComm();
 
-    // Define the callback function:
+    // Define the callback functions:
     ros::ServiceServer command_srv =
 	n.advertiseService("speed_command", commandcb);
     ros::ServiceServer command_srv2 =
@@ -506,6 +536,9 @@ int main(int argc, char** argv)
     ros::ServiceServer request_srv =
 	n.advertiseService("position_request", requestcb);
     ros::Timer kb_timer = n.createTimer(ros::Duration(0.02), keyboardcb);
+
+    // Setup publisher:
+    pub = n.advertise<geometry_msgs::PointStamped> ("serviced_values", 100);
 
     ROS_INFO("Starting Serial Node...");
 
