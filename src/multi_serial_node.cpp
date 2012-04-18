@@ -590,15 +590,6 @@ int main(int argc, char** argv)
     }
 
     ROS_INFO("Starting Serial Node...");
-
-    // int tmp = get_key(0x31);
-    // printf("get_key(0x31) = %d\r\n",tmp);
-    // tmp = get_key(0x33);
-    // printf("get_key(0x33) = %d\r\n",tmp);
-    // tmp = get_key(1);
-    // printf("get_key(1) = %d\r\n",tmp);
-    // tmp = get_key(3);
-    // printf("get_key(3) = %d\r\n",tmp);
     
     // Wait for new data:
     ros::spin();
