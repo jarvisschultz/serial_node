@@ -142,7 +142,8 @@ bool commandcb(puppeteer_msgs::speed_command::Request &req,
 	cmd.point.y = req.Vright;
 	cmd.point.z = req.Vtop;
 	int tmp = get_key(req.robot_index);
-	pub[tmp-1].publish(cmd);
+	if (tmp != 0)
+	    pub[tmp-1].publish(cmd);
     }
     else
     {
@@ -185,8 +186,8 @@ bool longcb(puppeteer_msgs::long_command::Request &req,
 	cmd.point.x = req.num4;
 	cmd.point.y = req.num5;
 	cmd.point.z = 0.0;
-
-	pub[tmp-1].publish(cmd);
+	if (tmp != 0)
+	    pub[tmp-1].publish(cmd);
     }
     else
     {
