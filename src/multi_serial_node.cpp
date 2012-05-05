@@ -239,7 +239,7 @@ bool requestcb(puppeteer_msgs::position_request::Request &req,
 // returns the robot name that has that index
 int get_key(int index)
 {
-    ROS_INFO("Getting KEY");
+    ROS_DEBUG("Getting KEY");
     int tmp = 0;
     for (int i=0; i<nr; i++)
     {
