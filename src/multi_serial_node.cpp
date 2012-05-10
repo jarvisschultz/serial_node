@@ -308,7 +308,7 @@ void sendData(int id, unsigned char *DataString, unsigned int len)
       
     write(fd, packet, len);
     fsync(fd);
-    ROS_DEBUG("Sending String to Robot %d:", id);
+    ROS_INFO("Sending String to Robot %d:", id);
     for(i = 0; i < len; i++)
 	printf("%02X ",(unsigned char) packet[i]);
     printf("\n");
