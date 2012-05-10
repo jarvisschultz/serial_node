@@ -99,12 +99,12 @@ void keyboardcb(const ros::TimerEvent& e)
 
 	if(c == 'p')
 	{
-	    ROS_INFO("Reopening Serial Access");
+	    ROS_WARN("Reopening Serial Access");
 	    exit_flag = false;
 	}
 	else
 	{
-	    ROS_INFO("Stopping Robots and Closing Serial Access"); 
+	    ROS_WARN("Stopping Robots and Closing Serial Access"); 
 	    ros::param::set("/operating_condition", 4);
 	    exit_flag = true;
 	}
@@ -308,7 +308,7 @@ void sendData(int id, unsigned char *DataString, unsigned int len)
       
     write(fd, packet, len);
     fsync(fd);
-    ROS_INFO("Sending String to Robot %d:", id);
+    ROS_DEBUG("Sending String to Robot %d:", id);
     for(i = 0; i < len; i++)
 	printf("%02X ",(unsigned char) packet[i]);
     printf("\n");
@@ -439,7 +439,7 @@ bool GetData(const unsigned char type, const int id, float *val1, float *val2, f
     
     write(fd, szPtr, SHORT_PACKET_SIZE);
     fsync(fd);
-    ROS_INFO("Sending String:");
+    ROS_INFO("Sending request string to Robot %d:", id);
     for(i = 0; i < SHORT_PACKET_SIZE; i++)
 	printf("%02X ",szPtr[i]);
     printf("\n");
