@@ -9,10 +9,10 @@
   then responds to the client with an acknowledgement.
 
 *******************************************************************************/
-  
+
 //Notes:
 
-  
+
 /*****INCLUDES ****************************************************************/
 #include <ros/ros.h>
 #include <std_msgs/String.h>
@@ -44,7 +44,9 @@
 #define	LONG_PACKET_SIZE	(18)
 #define MAX_ROBOTS		(9)
 #define MAX_FLOATS		(5)
-#define BYTES_PER_FLOAT		(3)
+#define BYTES_PER_FLOAT		(3)  
+#define MAX_FREQUENCY		(50) // Hz
+#define MIN_FREQUENCY		(10) // Hz
 
 
 /*****DECLARATIONS ************************************************************/
@@ -53,10 +55,6 @@ void initComm(std::string);
 void BuildNumber(unsigned char *, float, short int);
 void MakeString(unsigned char *, char, float*, int, int);
 void stopRobots(void);
-bool GetData(const unsigned char, const int, float *, float *, float *);
-int DataChecker(const unsigned char, const unsigned char *);
-int ReadSerial(unsigned char *);
-float InterpNumber(const unsigned char *);
 void keyboardcb(const ros::TimerEvent &);
 int get_key(int);
 
@@ -74,19 +72,23 @@ unsigned char packet_prev[128];
 // currently
 ros::Publisher pub[MAX_ROBOTS];
 ros::Subscriber sub[MAX_ROBOTS];
-ros::Subscriber keyboard_sub;
+ros::Time sent_times[MAX_ROBOTS];
+puppeteer_msgs::RobotCommands sent_commands[MAX_ROBOTS];
+
+int operating_condition = 0;
 int nr = 0;
+
 
 
 /*****CALLBACKS ***************************************************************/
 // This function gets called if we have detected that the user is pressing a key
 // on the keyboard.
-void keyboardcb(const ros::TimerEvent& e) 
+void keyboardcb(const ros::TimerEvent& e)
 {
     ROS_DEBUG("keyboardcb triggered\n");
       // check kbhit() to see if there was a keyboard strike and
     // transfer_flag to see if there is a node sending serial data
-    if(kbhit()) 
+    if(kbhit())
     {
 	ROS_DEBUG("Keyboard Strike Detected\n");
 	int c = fgetc(stdin);
@@ -98,7 +100,7 @@ void keyboardcb(const ros::TimerEvent& e)
 	}
 	else
 	{
-	    ROS_WARN("Stopping Robots and Closing Serial Access"); 
+	    ROS_WARN("Stopping Robots and Closing Serial Access");
 	    ros::param::set("/operating_condition", 4);
 	    exit_flag = true;
 	}
@@ -112,7 +114,7 @@ void keyboardcb(const ros::TimerEvent& e)
 // robots.
 void send_command_cb(const puppeteer_msgs::RobotCommands& c)
 {
-    ROS_DEBUG("Serial request received"); 
+    ROS_DEBUG("Serial request received");
     char type = c.type;
     unsigned char out[128];
     float vals[MAX_FLOATS];
@@ -121,14 +123,26 @@ void send_command_cb(const puppeteer_msgs::RobotCommands& c)
     
     switch (type)
     {
+    case 'p': // REF_POSE
+	len = PACKET_SIZE;
+	vals[0] = c.x_desired;
+	vals[1] = c.y_desired;
+	vals[2] = c.th_desired;
+	break;
+    case 'r': // RESET
+	len = PACKET_SIZE;
+	break;
+    case 'q': // STOP
+	len = PACKET_SIZE;
+	break;
+    case 'm': // START
+	len = PACKET_SIZE;
+	break;
     case 'h': // MOT_SPEED
 	len = PACKET_SIZE;
 	vals[0] = c.v_left;
 	vals[1] = c.v_right;
-	vals[2] = c.v_top;	
-	break;
-    case 'm': // START
-	len = PACKET_SIZE;
+	vals[2] = c.v_top;
 	break;
     case 'd': // EXT_SPEED
 	len = PACKET_SIZE;
@@ -136,17 +150,75 @@ void send_command_cb(const puppeteer_msgs::RobotCommands& c)
 	vals[1] = c.w_robot;
 	vals[2] = c.rdot;
 	break;
-    case 'l':
+    case 'n': // MOT_SPEED_FULL
+	len = LONG_PACKET_SIZE;
+	vals[0] = c.v_left;
+	vals[1] = c.v_right;
+	vals[2] = c.v_top_left;
+	vals[3] = c.v_top_right;
+	break;
+    case 'i': // EXT_SPEED_FULL
+	len = LONG_PACKET_SIZE;
+	vals[0] = c.v_robot;
+	vals[1] = c.w_robot;
+	vals[2] = c.rdot_left;
+	vals[3] = c.rdot_right;
+	break;
+    case 'a': // SET_CONFIG_FULL
+	len = LONG_PACKET_SIZE;
+	vals[0] = c.x;
+	vals[1] = c.y;
+	vals[2] = c.th;
+	vals[3] = c.height_left;
+	vals[4] = c.height_right;
+	break;
+    case 's': // SET_DEF_SPEED
+	len = PACKET_SIZE;
+	vals[0] = c.default_speed;
+	break;
+    case 'l': // SET_POSE
 	len = PACKET_SIZE;
 	vals[0] = c.x;
 	vals[1] = c.y;
 	vals[2] = c.th;
+	break;
+    case 'b': // SET_HEIGHT
+	len = PACKET_SIZE;
+	vals[0] = c.height_left;
+	vals[1] = c.height_right;
+	break;
+    case 'w': // POSE_REQ
+	len = SHORT_PACKET_SIZE;
+	break;
+    case 'e': // SPEED_REQ
+	len = SHORT_PACKET_SIZE;
+	break;
+    // case 'k': // KIN_CON
+    // 	break;
+    // case 't': // KIN_CON_FULL
+    // 	break;
     }
 
+    // get receiving robot's namespace:
+    int tmp = get_key(c.robot_index);
 
+    // If commands are too fast, delay:
+    // make string and send data
     MakeString(out, type, vals, len, c.div);
     sendData(c.robot_index, out, len);
-    
+
+    // publish the data sent:
+    if (tmp != 0)
+    {
+	geometry_msgs::PointStamped cmd;
+	cmd.header.frame_id = c.type;
+	cmd.header.stamp = ros::Time::now();
+	cmd.point.x = vals[0];
+	cmd.point.y = vals[1];
+	cmd.point.z = vals[2];
+    	pub[tmp-1].publish(cmd);
+    }
+
     return;
 }
 
@@ -189,8 +261,8 @@ void sendData(int id, unsigned char *DataString, unsigned int len)
 
     checksum = 0xFF-(checksum & 0xFF);
 
-    packet[len-1] = checksum;    
-      
+    packet[len-1] = checksum;
+
     write(fd, packet, len);
     fsync(fd);
     ROS_INFO("Sending String to Robot %d:", id);
@@ -218,7 +290,7 @@ int get_key(int index)
 	    ROS_WARN("Could not find parameter");
 
 	if (tmp == index)
-	    return i+1;	    
+	    return i+1;
     }
 
     return 0;
@@ -226,13 +298,13 @@ int get_key(int index)
 
 
 
-    
+
 void stopRobots(void)
 {
     unsigned char szBufferToTransfer[16];
     static int robot_id = 9;
     float vals[3] = {0.0,0.0,0.0};
-  
+
     // Let's make the data string:
     MakeString(szBufferToTransfer, 'q', vals, 3, 3);
     // Now let's send out the data string:
@@ -250,17 +322,17 @@ void stopRobots(void)
 // communicate with the mobile robot.
 void initComm(std::string dev)
 {
-    /* 
+    /*
        Open modem device for reading and writing and not as controlling tty
        because we don't want to get killed if linenoise sends CTRL-C.
     */
-    fd = open(dev.c_str(), O_RDWR | O_NOCTTY ); 
+    fd = open(dev.c_str(), O_RDWR | O_NOCTTY );
     if (fd <0) {perror(MODEMDEVICE); exit(-1); }
 
     tcgetattr(fd,&oldtio); /* save current serial port settings */
     bzero(&newtio, sizeof(newtio)); /* clear struct for new port settings */
- 
-    /* 
+
+    /*
        BAUDRATE: Set bps rate. You could also use cfsetispeed and cfsetospeed.
        CRTSCTS : output hardware flow control (only used if the cable has
        all necessary lines. See sect. 7 of Serial-HOWTO)
@@ -270,7 +342,7 @@ void initComm(std::string dev)
        CREAD   : enable receiving characters
     */
     newtio.c_cflag = BAUDRATE /* | CRTSCTS */ | CS8 | CLOCAL | CREAD | CSTOPB;
-	 
+
     /*
       IGNPAR  : ignore bytes with parity errors
       ICRNL   : map CR to NL (otherwise a CR input on the other computer
@@ -285,7 +357,7 @@ void initComm(std::string dev)
     newtio.c_oflag &= ~OPOST;
 
     /*
-     * Disable canonical input so that we can read byte-by-byte 
+     * Disable canonical input so that we can read byte-by-byte
      */
     newtio.c_lflag &= ~(ICANON | ECHO | ECHOE | ISIG);
 
@@ -293,8 +365,8 @@ void initComm(std::string dev)
      * and the timeout length */
     newtio.c_cc[VTIME] = 0;
     newtio.c_cc[VMIN] = 0;
-	
-    /* 
+
+    /*
        now clean the modem line and activate the settings for the port
     */
     tcflush(fd, TCIOFLUSH);
@@ -322,140 +394,11 @@ void BuildNumber(unsigned char *destination, float value, short int divisor)
     *(destination) = i1;
     *(destination+1) = i2;
     *(destination+2) = i3;
-        
+
     return;
 }
 
 
-bool GetData(const unsigned char type, const int id, float *val1, float *val2, float *val3)
-{
-    bool read_flag = true;
-    unsigned char szPtr[128];
-    unsigned char data[128];
-    int i = 0;
-    memset(szPtr, 0, sizeof(szPtr));
-    memset(data, 0, sizeof(data));
-        
-    // First we need to send out the request for the robot to send its
-    // data:
-    szPtr[0] = type;
-    szPtr[1] = (id+0x30);
-    szPtr[2] = 0xFF-((type+id+0x30) & 0xFF);
-    
-    write(fd, szPtr, SHORT_PACKET_SIZE);
-    fsync(fd);
-    ROS_INFO("Sending request string to Robot %d:", id);
-    for(i = 0; i < SHORT_PACKET_SIZE; i++)
-	printf("%02X ",szPtr[i]);
-    printf("\n");
-    
-    // Now, we need to get the data sent back:
-    if(ReadSerial(data))
-    {
-	// Good read! Let's check validity:
-	if(DataChecker(type, data))
-	{
-	    read_flag = false;
-	    // If it is good data, let's interpret it:
-	    *val1 = InterpNumber(&data[2]);
-	    *val2 = InterpNumber(&data[5]);
-	    *val3 = InterpNumber(&data[8]);
-	    return read_flag;
-	}
-	else
-	    ROS_WARN("Full string received, but not valid");
-    }
-    else
-	ROS_WARN("Not enough data received");
-
-    // Then let's estimate the data:
-    *val1 = 0.0;
-    *val2 = 0.0;
-    *val3 = 0.0;
-    
-    return read_flag;
-}    
-
-int DataChecker(const unsigned char type, const unsigned char *data)
-{
-    short unsigned int checksum = 0;
-    int i = 0;
-    int validity = 0;
-    // First, is the first character a valid reply character:
-    if (data[0] == type)
-    {
-	// Now check the address:
-	if (data[1] == '0')
-	{
-	    // Now check the checksum:
-	    for (i=0; i<PACKET_SIZE-1; i++)
-		checksum += data[i];
-	    checksum = 0xFF-(checksum & 0xFF);
-	    if (checksum == (unsigned int) data[PACKET_SIZE-1])
-	    {
-		validity = 1;
-	    }
-	}
-    }
-    return validity;
-}
-
-int ReadSerial(unsigned char *data)
-{
-    unsigned char *bufptr;      /* Current char in buffer */
-    int  nbytes = 0;	      /* Number of bytes read */
-    short unsigned int count = 0;
-    int bytes_read = 0;
-    int successful_read = 0;
-    struct timespec newdelay = {0, 100000};
-    struct timespec delayrem;
-
-    bufptr = data;
-
-    // Let's try to read in the sent command a few times:
-    for (count = 0; count < 10*PACKET_SIZE; count++)
-    {
-	if((nbytes = read(fd, bufptr, PACKET_SIZE)) == -1)
-	    ROS_WARN("Read Error!");
-      
-	bytes_read += nbytes;
-	bufptr += nbytes;
-	if (bytes_read >= PACKET_SIZE)
-	{
-	    ROS_INFO("Received: ");
-	    for (nbytes = 0; nbytes < 12; nbytes++)
-		printf("%02X ", (unsigned char) data[nbytes]);
-	    printf("\n");
-	    successful_read = 1;
-	    break;
-	}
-	if(nanosleep(&newdelay,&delayrem)) printf("Nanosleep Error\n");;
-    }
-    tcflush(fd, TCIOFLUSH);
-    return successful_read;
-}
-		
-
-float InterpNumber(const unsigned char *data)
-{
-    unsigned int num1 = 0;
-    int num2 = 0;
-    float numf = 0.0;
-    short int c1 = 0;
-    short unsigned int c2, c3;
-    short unsigned int divisor = 1;
-
-    // First, let's get the numeric values of each char:
-    c1 = (short int) *(data);
-    c2 = (short unsigned int) *(data+1);
-    c3 = (short unsigned int) *(data+2);
-    divisor = (((short unsigned int) *(data+2)) & 0x07);
-    num1 = ((((c1<<16)&0xFF0000)+((c2<<8)&0x00FF00)+(c3)))<<11;
-    num2 = ((int) (num1))>>14;
-    numf = ((float) num2)/(powf((float) 10.0,(float) divisor));
-
-    return numf;
-}
 
 
 /*****MAIN *************************************************************/
@@ -488,7 +431,11 @@ int main(int argc, char** argv)
 	nr = 1;
     }
 
-    ros::Timer kb_timer = n.createTimer(ros::Duration(0.02), keyboardcb);
+    // create a timer for the keyboard node:
+    ros::Timer kb_timer = n.createTimer(ros::Duration(0.1), keyboardcb);
+
+    // create a timer for keeping the serial rates in check:
+    ros::Timer freq_timer = n.createTimer(ros::Duration(0.01), frequency_regulator);
 
     // Setup publishers and subscribers:
     for (int j=0; j<nr; j++)
@@ -503,7 +450,7 @@ int main(int argc, char** argv)
     keyboard_sub = n.subscribe("/keyboard_serial_commands", 10, send_command_cb);
 
     ROS_INFO("Starting Serial Node...");
-    
+
     // Wait for new data:
     ros::spin();
 }
