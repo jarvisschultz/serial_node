@@ -31,3 +31,6 @@ set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 
 rosbuild_add_executable(serial_node src/serial_node.cpp)
 rosbuild_add_executable(multi_serial_node src/multi_serial_node.cpp)
+rosbuild_add_executable(multi_serial_topic src/multi_serial_topic.cpp)
+
+
