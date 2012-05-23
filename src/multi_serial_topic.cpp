@@ -263,7 +263,8 @@ void sendData(int id, unsigned char *DataString, unsigned int len)
 
     packet[len-1] = checksum;
 
-    write(fd, packet, len);
+    if (write(fd, packet, len) == -1)
+	ROS_ERROR("Error sending serial packet");
     fsync(fd);
     ROS_INFO("Sending String to Robot %d:", id);
     for(i = 0; i < len; i++)
@@ -322,6 +323,7 @@ void stopRobots(void)
 // communicate with the mobile robot.
 void initComm(std::string dev)
 {
+    ROS_INFO("Opening serial connection on %s", dev.c_str());
     /*
        Open modem device for reading and writing and not as controlling tty
        because we don't want to get killed if linenoise sends CTRL-C.
@@ -408,6 +410,9 @@ int main(int argc, char** argv)
     ros::init(argc, argv, "serial_node");
     ros::NodeHandle n;
 
+    
+    ROS_INFO("Starting Serial Node...");
+
     // Initialize communication
     std::string dev;
     if (ros::param::has("serial_device"))
@@ -417,7 +422,6 @@ int main(int argc, char** argv)
     else {
 	dev = MODEMDEVICE;
 	ROS_INFO("Using default serial device %s",dev.c_str());
-	ros::param::set("serial_device", dev);
     }
     initComm(dev);
 
@@ -434,9 +438,6 @@ int main(int argc, char** argv)
     // create a timer for the keyboard node:
     ros::Timer kb_timer = n.createTimer(ros::Duration(0.1), keyboardcb);
 
-    // create a timer for keeping the serial rates in check:
-    ros::Timer freq_timer = n.createTimer(ros::Duration(0.01), frequency_regulator);
-
     // Setup publishers and subscribers:
     for (int j=0; j<nr; j++)
     {
@@ -447,9 +448,6 @@ int main(int argc, char** argv)
 	ss << "/robot_" << j+1 << "/serial_commands";
 	sub[j] = n.subscribe(ss.str(), 10, send_command_cb);
     }
-    keyboard_sub = n.subscribe("/keyboard_serial_commands", 10, send_command_cb);
-
-    ROS_INFO("Starting Serial Node...");
 
     // Wait for new data:
     ros::spin();
