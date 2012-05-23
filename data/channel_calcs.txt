@@ -1,0 +1,20 @@
+The robot number is the number written on the actual XBee's, and the
+one stored in the "Node Identifier" address.
+
+The minimum channel is 0x0B, and the max is 0x1A.  This means that we
+can run at least fifteen robots with each having a separate channel
+
+The PAN ID is between 0x0000 and 0xFFFF, but we don't want to use
+0xFFFF because it sends to all PAN ID's
+
+MAC Mode (1) : 802.15.4 NO ACKS
+
+Interface Data Rate BD (7) : 115200
+
+Packetization Timeout (0) : R0 
+
+EQUATIONS:
+
+	CHANNEL = hex(0x0B + N - 1)
+
+	PANID = hex(0x3332 + N - 1)
