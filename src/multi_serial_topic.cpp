@@ -70,10 +70,8 @@ unsigned char packet_prev[128];
 // Define publisher for publishing the value handled by
 // serial_node.  We do this because we cannot bag service calls
 // currently
-ros::Publisher pub[MAX_ROBOTS];
-ros::Subscriber sub[MAX_ROBOTS];
-ros::Time sent_times[MAX_ROBOTS];
-puppeteer_msgs::RobotCommands sent_commands[MAX_ROBOTS];
+ros::Publisher pub;
+ros::Subscriber sub;
 
 int operating_condition = 0;
 int nr = 0;
@@ -216,7 +214,7 @@ void send_command_cb(const puppeteer_msgs::RobotCommands& c)
 	cmd.point.x = vals[0];
 	cmd.point.y = vals[1];
 	cmd.point.z = vals[2];
-    	pub[tmp-1].publish(cmd);
+    	pub.publish(cmd);
     }
 
     return;
@@ -439,16 +437,15 @@ int main(int argc, char** argv)
     ros::Timer kb_timer = n.createTimer(ros::Duration(0.1), keyboardcb);
 
     // Setup publishers and subscribers:
-    for (int j=0; j<nr; j++)
-    {
-	std::stringstream ss;
-	ss << "/robot_" << j+1 << "/serviced_values";
-	pub[j] = n.advertise<geometry_msgs::PointStamped> (ss.str(), 100);
-	ss.str("");
-	ss << "/robot_" << j+1 << "/serial_commands";
-	sub[j] = n.subscribe(ss.str(), 10, send_command_cb);
-    }
-
+    std::stringstream ss;
+    // ss << "/robot_" << j+1 << "/serviced_values";
+    ss << "serviced_values";
+    pub = n.advertise<geometry_msgs::PointStamped> (ss.str(), 100);
+    ss.str("");
+    ss << "serial_commands";
+    // ss << "/robot_" << j+1 << "/serial_commands";
+    sub = n.subscribe(ss.str(), 10, send_command_cb);
+    
     // Wait for new data:
     ros::spin();
 }
