@@ -50,11 +50,11 @@
 
 
 /*****DECLARATIONS ************************************************************/
-void sendData(int, unsigned char *, unsigned int);
-void initComm(std::string);
-void BuildNumber(unsigned char *, float, short int);
-void MakeString(unsigned char *, char, float*, int, int);
-void stopRobots(void);
+void send_data(int, unsigned char *, unsigned int);
+void init_comm(std::string);
+void build_number(unsigned char *, float, short int);
+void make_string(unsigned char *, char, float*, int, int);
+void stop_robots(void);
 void keyboardcb(const ros::TimerEvent &);
 int get_key(int);
 
@@ -72,6 +72,7 @@ unsigned char packet_prev[128];
 // currently
 ros::Publisher pub;
 ros::Subscriber sub;
+ros::Subscriber keyboard_sub;
 
 int operating_condition = 0;
 int nr = 0;
@@ -103,7 +104,7 @@ void keyboardcb(const ros::TimerEvent& e)
 	    exit_flag = true;
 	}
     }
-    if(exit_flag == true) stopRobots();
+    if(exit_flag == true) stop_robots();
 }
 
 
@@ -202,8 +203,8 @@ void send_command_cb(const puppeteer_msgs::RobotCommands& c)
 
     // If commands are too fast, delay:
     // make string and send data
-    MakeString(out, type, vals, len, c.div);
-    sendData(c.robot_index, out, len);
+    make_string(out, type, vals, len, c.div);
+    send_data(c.robot_index, out, len);
 
     // publish the data sent:
     if (tmp != 0)
@@ -223,18 +224,18 @@ void send_command_cb(const puppeteer_msgs::RobotCommands& c)
 
 /*****FUNCTIONS ***************************************************************/
 
-void MakeString(unsigned char *dest, char type, float *vals,
+void make_string(unsigned char *dest, char type, float *vals,
 		int num, int div)
 {
     *dest = type;
     for (int j=0; j<num; j++)
-	BuildNumber((dest+1+j*BYTES_PER_FLOAT), vals[j], div);
+	build_number((dest+1+j*BYTES_PER_FLOAT), vals[j], div);
     return;
 }
 
 
 
-void sendData(int id, unsigned char *DataString, unsigned int len)
+void send_data(int id, unsigned char *DataString, unsigned int len)
 {
     char packet[128];
     unsigned int i = 0;
@@ -298,28 +299,28 @@ int get_key(int index)
 
 
 
-void stopRobots(void)
+void stop_robots(void)
 {
     unsigned char szBufferToTransfer[16];
-    static int robot_id = 9;
     float vals[3] = {0.0,0.0,0.0};
+    int robot_index;
+    if (ros::param::has("robot_index"))
+	ros::param::get("robot_index", robot_index);
+    else
+	robot_index = 9;
 
     // Let's make the data string:
-    MakeString(szBufferToTransfer, 'q', vals, 3, 3);
+    make_string(szBufferToTransfer, 'q', vals, 3, 3);
     // Now let's send out the data string:
-    sendData(robot_id, szBufferToTransfer, PACKET_SIZE);
-
-    // Set the robot_id value for the next call of this function:
-    if (robot_id == 9) robot_id = 1;
-    else if (robot_id == 3) robot_id = 9;
-    else robot_id++;
+    send_data(robot_index, szBufferToTransfer, PACKET_SIZE);
+    return;    
 }
 
 
 
 // The following function is used for opening a com port to
 // communicate with the mobile robot.
-void initComm(std::string dev)
+void init_comm(std::string dev)
 {
     ROS_INFO("Opening serial connection on %s", dev.c_str());
     /*
@@ -374,7 +375,7 @@ void initComm(std::string dev)
 }
 
 
-void BuildNumber(unsigned char *destination, float value, short int divisor)
+void build_number(unsigned char *destination, float value, short int divisor)
 {
     int valint = 0;
     int i = 0;
@@ -421,7 +422,7 @@ int main(int argc, char** argv)
 	dev = MODEMDEVICE;
 	ROS_INFO("Using default serial device %s",dev.c_str());
     }
-    initComm(dev);
+    init_comm(dev);
 
     // get the number of robots
     if (ros::param::has("/number_robots"))
@@ -445,6 +446,7 @@ int main(int argc, char** argv)
     ss << "serial_commands";
     // ss << "/robot_" << j+1 << "/serial_commands";
     sub = n.subscribe(ss.str(), 10, send_command_cb);
+    keyboard_sub = n.subscribe("/keyboard_serial_commands", 10, send_command_cb);
     
     // Wait for new data:
     ros::spin();
