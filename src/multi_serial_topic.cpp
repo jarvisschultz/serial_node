@@ -287,7 +287,7 @@ int get_key(int index)
 	    ros::param::get(ss.str(), tmp);
 	}
 	else
-	    ROS_WARN("Could not find parameter");
+	    ROS_DEBUG("Could not find parameter");
 
 	if (tmp == index)
 	    return i+1;
