@@ -1,5 +1,4 @@
 *~
 build/
 bin/
-Makefile
 data/serial_device_dict.xml
