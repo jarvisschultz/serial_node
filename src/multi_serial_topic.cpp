@@ -198,26 +198,34 @@ void send_command_cb(const puppeteer_msgs::RobotCommands& c)
     // 	break;
     }
 
-    // get receiving robot's namespace:
-    int tmp = get_key(c.robot_index);
-
-    // If commands are too fast, delay:
-    // make string and send data
-    make_string(out, type, vals, len, c.div);
-    send_data(c.robot_index, out, len);
-
-    // publish the data sent:
-    if (tmp != 0)
+    // check if the command is for the robot in the current namespace:
+    int tmp=0;
+    if(ros::param::has("robot_index") )
+	ros::param::get("robot_index", tmp);
+    else
+	ROS_WARN("Could not find parameter: robot_index");
+    if ( (c.robot_index != tmp) && c.robot_index != 9)
     {
-	geometry_msgs::PointStamped cmd;
-	cmd.header.frame_id = c.type;
-	cmd.header.stamp = ros::Time::now();
-	cmd.point.x = vals[0];
-	cmd.point.y = vals[1];
-	cmd.point.z = vals[2];
-    	pub.publish(cmd);
+	ROS_DEBUG("Command not sent to correct robot!");
     }
+    else
+    {
+	// make string and send data
+	make_string(out, type, vals, len, c.div);
+	send_data(c.robot_index, out, len);
 
+	// publish the data sent:
+	if (tmp != 0)
+	{
+	    geometry_msgs::PointStamped cmd;
+	    cmd.header.frame_id = c.type;
+	    cmd.header.stamp = ros::Time::now();
+	    cmd.point.x = vals[0];
+	    cmd.point.y = vals[1];
+	    cmd.point.z = vals[2];
+	    pub.publish(cmd);
+	}
+    }
     return;
 }
 
@@ -439,12 +447,10 @@ int main(int argc, char** argv)
 
     // Setup publishers and subscribers:
     std::stringstream ss;
-    // ss << "/robot_" << j+1 << "/serviced_values";
     ss << "serviced_values";
     pub = n.advertise<geometry_msgs::PointStamped> (ss.str(), 100);
     ss.str("");
     ss << "serial_commands";
-    // ss << "/robot_" << j+1 << "/serial_commands";
     sub = n.subscribe(ss.str(), 10, send_command_cb);
     keyboard_sub = n.subscribe("/keyboard_serial_commands", 10, send_command_cb);
     

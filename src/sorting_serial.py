@@ -7,6 +7,7 @@ import rospy
 import roslib
 roslib.load_manifest('serial_node')
 import re
+import argparse
 
 ## First thing that we need to do is import the serial library:
 try:
@@ -112,17 +113,30 @@ if __name__ == "__main__":
         num = read_com(p)
         dat.append((p, num))
 
-    rospy.loginfo("Found the following tuples:")
-    for v in dat:
-        rospy.loginfo("%s", v)
-
     ## find mapping between robot namespaces and their indices:
     cmd = 'rospack find puppeteer_control'
     p = os.popen(cmd, "r")
     direct = p.readline()[0:-1]
     p.close()
-    D = get_robot_indices(direct + "/launch/multi_nodelet.launch")
+    fname = direct + "/launch/multi_nodelet.launch"
+    # did we provide a filename?
+    parser = argparse.ArgumentParser()
+    parser.add_argument("file", nargs='?', default=fname,
+                        help="name of a launch file to read in")
+    args = parser.parse_args()
+    D = get_robot_indices(args.file)
+    Dout = {}
+    for d in D.keys():
+        for v in dat:
+            if v[1] == D[d]:
+                Dout[d] = list(v)
+    
 
+    rospy.loginfo("Found the following data:")
+    for (key,val) in Dout.iteritems():
+        rospy.loginfo("namespace = {0:s},   device = {1:s},   index = {2:d}".
+                      format(key, val[0], val[1]))
+    
     # now write a file that stores data in a text file that
     # can be read in by a launch file
     direct = sys.argv[0]
