@@ -1,4 +1,4 @@
 *~
 build/
 bin/
-data/serial_device_dict.xml
+data/*.xml

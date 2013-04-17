@@ -102,28 +102,36 @@ def get_robot_indices(fname):
 if __name__ == "__main__":
     rospy.logdebug("Starting serial sorting node")
     rospy.init_node('sorting_serial', log_level=rospy.INFO)
-    ports = glob.glob('/dev/ttyUS*')
-    if not ports:
-        rospy.logerr("No USB serial devices found!")
-        sys.exit(1)
-
-    dat = []
-    rospy.loginfo("Obtaining Node Identifiers...")
-    for p in ports:
-        num = read_com(p)
-        dat.append((p, num))
 
     ## find mapping between robot namespaces and their indices:
     cmd = 'rospack find puppeteer_control'
     p = os.popen(cmd, "r")
     direct = p.readline()[0:-1]
     p.close()
-    fname = direct + "/launch/multi_nodelet.launch"
+    fname = os.path.join(direct,"launch/multi_nodelet.launch")
     # did we provide a filename?
     parser = argparse.ArgumentParser()
     parser.add_argument("file", nargs='?', default=fname,
                         help="name of a launch file to read in")
     args = parser.parse_args()
+    rospy.loginfo("Input file = %s"%os.path.abspath(args.file))
+    if not os.path.exists(args.file):
+        rospy.logwarn("Input file not found")
+        sys.exit(1)
+
+    # get list of current serial ports    
+    ports = glob.glob('/dev/ttyUS*')
+    if not ports:
+        rospy.logerr("No USB serial devices found!")
+        sys.exit(1)
+
+    # get all of the node identifiers off of the XBee's
+    dat = []
+    rospy.loginfo("Obtaining Node Identifiers...")
+    for p in ports:
+        num = read_com(p)
+        dat.append((p, num))
+
     D = get_robot_indices(args.file)
     Dout = {}
     for d in D.keys():
@@ -131,7 +139,7 @@ if __name__ == "__main__":
             if v[1] == D[d]:
                 Dout[d] = list(v)
     
-
+    # print out data
     rospy.loginfo("Found the following data:")
     for (key,val) in Dout.iteritems():
         rospy.loginfo("namespace = {0:s},   device = {1:s},   index = {2:d}".
@@ -140,7 +148,9 @@ if __name__ == "__main__":
     # now write a file that stores data in a text file that
     # can be read in by a launch file
     direct = sys.argv[0]
-    tmp = direct[0:direct.find("src")]+"data/serial_device_dict.xml"
+    tmp = direct[0:direct.find("src")]
+    tmp = os.path.join(tmp, "data", os.path.splitext(os.path.basename(args.file))[0]+
+                       "_serial_device_dict.xml")
     f = open(tmp, 'w')
     for key in D.keys():
         for v in dat:
