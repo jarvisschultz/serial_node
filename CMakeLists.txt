@@ -47,7 +47,7 @@ find_package(catkin REQUIRED COMPONENTS roscpp rospy std_msgs geometry_msgs)
 catkin_package(
    INCLUDE_DIRS include
 #  LIBRARIES pend_tracker
-   CATKIN_DEPENDS rospy roscpp std_msgs geometry_msgs
+   CATKIN_DEPENDS rospy roscpp std_msgs geometry_msgs puppeteer_msgs
 #  DEPENDS system_lib
 )
 
@@ -70,6 +70,12 @@ include_directories(include
 add_executable(serial_node src/serial_node.cpp)
 add_executable(multi_serial_node src/multi_serial_node.cpp)
 add_executable(multi_serial_topic src/multi_serial_topic.cpp)
+add_dependencies(serial_node puppeteer_msgs_gencpp)
+add_dependencies(multi_serial_node puppeteer_msgs_gencpp)
+add_dependencies(multi_serial_topic puppeteer_msgs_gencpp)
+
+
+
 
 ## Add cmake target dependencies of the executable/library
 ## as an example, message headers may need to be generated before nodes
