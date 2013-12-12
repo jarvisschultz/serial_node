@@ -16,6 +16,8 @@
 /*****INCLUDES ****************************************************************/
 #include <ros/ros.h>
 #include <std_msgs/String.h>
+#include <std_msgs/UInt16MultiArray.h>
+#include <std_msgs/MultiArrayDimension.h>
 #include <geometry_msgs/PointStamped.h>
 
 #include <stdio.h>
@@ -32,6 +34,7 @@
 #include <assert.h>
 #include <kbhit.h>
 #include <iostream>
+#include <vector>
 
 #include "puppeteer_msgs/RobotCommands.h"
 
@@ -47,7 +50,8 @@
 #define BYTES_PER_FLOAT		(3)  
 #define MAX_FREQUENCY		(50) // Hz
 #define MIN_FREQUENCY		(10) // Hz
-
+#define TOTAL_CURR_PACKETS      (1500)
+#define CURR_PACKET_SIZE        (10)
 
 /*****DECLARATIONS ************************************************************/
 void send_data(int, unsigned char *, unsigned int);
@@ -56,6 +60,7 @@ void build_number(unsigned char *, float, short int);
 void make_string(unsigned char *, char, float*, int, int);
 void stop_robots(void);
 void keyboardcb(const ros::TimerEvent &);
+void serial_incomingcb(const ros::TimerEvent &);
 int get_key(int);
 
 
@@ -63,6 +68,7 @@ int get_key(int);
 int fd;
 bool exit_flag;
 bool transfer_flag;
+bool expect_data_flag = false;
 struct termios oldtio,newtio;
 struct timespec stopdelay = {0, 200000000};
 struct timespec delayrem;
@@ -71,11 +77,16 @@ unsigned char packet_prev[128];
 // serial_node.  We do this because we cannot bag service calls
 // currently
 ros::Publisher pub;
+ros::Publisher vec_pub;
 ros::Subscriber sub;
 ros::Subscriber keyboard_sub;
 
 int operating_condition = 0;
 int nr = 0;
+
+// vars for current sensing:
+bool current_traj_flag = false;
+std::vector<short unsigned int> curr_vec;
 
 
 
@@ -107,6 +118,154 @@ void keyboardcb(const ros::TimerEvent& e)
     if(exit_flag == true) stop_robots();
 }
 
+
+
+// bool read_current_entry(unsigned char *data)
+void read_current_entries()
+{
+    unsigned char data[24];
+    unsigned char *bufptr;      /* Current char in buffer */
+    int  nbytes = 0;	      /* Number of bytes read */
+    short unsigned int count = 0;
+    int bytes_read = 0;
+    // int successful_read = 0;
+    struct timespec newdelay = {0, 1000000};
+    struct timespec delayrem;
+
+    bool err_flag = false;
+    while (!err_flag)
+    {
+	bufptr = data;
+	nbytes = 0;
+	bytes_read = 0;
+	for (count=0; count<50; count++)
+	{
+	    nbytes = read(fd, bufptr, 10-bytes_read);
+	    bytes_read += nbytes;
+	    bufptr += nbytes;
+	    if (bytes_read >= 10)
+		break;
+	    if(nanosleep(&newdelay,&delayrem)) printf("Nanosleep Error\n");
+	}
+	if (bytes_read < 10)
+	    err_flag = true;
+	int num = 0;
+	sscanf((char*) data, "%d", &num);
+	curr_vec.push_back((short unsigned int) num);
+    }
+    
+    std::stringstream ss;
+    ss << "len(curr_vec) = " << curr_vec.size();
+    ROS_INFO("Collected %s data points from robot", ss.str().c_str());
+
+    // for (std::vector<int>::iterator it = curr_vec.begin();
+    // 	 it !=curr_vec.end(); ++it)
+    // 	std::cout << *it << std::endl;
+
+    // curr_vec.clear();
+
+    return;
+}
+	// printf("Literal read in:\r\n");
+	// for (int i=0; i<nbytes; i++)
+	//     printf("0x%02X ", (unsigned char) data[i]);
+	// printf("\r\n");
+	// int num=0;
+	// sscanf((char*) data, "%d", &num);
+	// printf("Converted num = %d\r\n", num);
+	// unsigned char dat2[24];
+	// unsigned int cnt = 0;
+	// for (int i=0; i<24; i++)
+	// 	if (data[i] != '\0')
+	// 	{
+	// 	    dat2[cnt] = data[i];
+	// 	    cnt++;
+	// 	}
+
+
+    // // Let's try to read in the sent command a few times:
+    // for (count = 0; count < 10*CURR_PACKET_SIZE; count++)
+    // {
+    // 	if((nbytes = read(fd, bufptr, CURR_PACKET_SIZE)) == -1)
+    // 	    ROS_WARN("Read Error!");
+      
+    // 	bytes_read += nbytes;
+    // 	bufptr += nbytes;
+    // 	if (bytes_read >= CURR_PACKET_SIZE)
+    // 	{
+    // 	    // ROS_INFO("Received: ");
+    // 	    // for (nbytes = 0; nbytes < CURR_PACKET_SIZE; nbytes++)
+    // 	    // 	printf("0x%02X ", (unsigned char) data[nbytes]);
+    // 	    // printf("\n");
+    // 	    successful_read = 1;
+    // 	    break;
+    // 	}
+    // 	if(nanosleep(&newdelay,&delayrem)) printf("Nanosleep Error\n");;
+    // }
+
+        // while(1)
+    // {
+    // 	for (count=0; count<10; count++)
+    // 	{
+    // 	    nbytes = read(fd, bufptr, 1);
+    // 	    if (nbytes > 0)
+    // 		break;
+    // 	    if(nanosleep(&newdelay,&delayrem)) printf("Nanosleep Error\n");
+    // 	}
+    // 	// if (*bufptr == '\r' || *bufptr == '\n')
+    // 	//     break;
+    // 	bytes_read += nbytes;
+    // 	bufptr += nbytes;
+    // 	if (bytes_read >= CURR_PACKET_SIZE)
+    // 	    break;
+    // }
+    
+    // return;
+    
+
+void publish_current_vector(void)
+{
+    std_msgs::UInt16MultiArray msg;
+    msg.layout.dim.push_back(std_msgs::MultiArrayDimension());
+    msg.layout.dim[0].size = curr_vec.size();
+    msg.layout.dim[0].stride = 1;
+    msg.layout.dim[0].label = "Current";
+    msg.data.resize(curr_vec.size());
+    msg.data = curr_vec;
+    vec_pub.publish(msg);
+    curr_vec.clear();
+    return;
+}
+
+
+// this function checks if we should be expecting data, if so, we get and parse
+// data. once we have a complete data string, we publish it
+void serial_incomingcb(const ros::TimerEvent& e)
+{
+    // should we be looking for data?
+    if (expect_data_flag)
+    {
+	if (current_traj_flag)
+	{
+	    expect_data_flag = false;
+	    current_traj_flag = false;
+	    // then we should be reading in a full trajectory of sensed current
+	    // values:
+	    read_current_entries();
+	    if(curr_vec.size() >= TOTAL_CURR_PACKETS)
+		publish_current_vector();
+	    else
+	    {
+		ROS_WARN("Not enough data received!");
+		curr_vec.clear();
+	    }
+	}
+	else
+	    expect_data_flag = false;
+    }
+    return;
+}
+   
 
 // this function is responsible for parsing the incoming serial
 // requests, building the correct string, and sending it out to the
@@ -186,11 +345,24 @@ void send_command_cb(const puppeteer_msgs::RobotCommands& c)
 	vals[0] = c.height_left;
 	vals[1] = c.height_right;
 	break;
+    ////////////////////////
+    // ALL REQUEST CASES: //
+    //////////////////////// 
     case 'w': // POSE_REQ
 	len = SHORT_PACKET_SIZE;
+	expect_data_flag = true;
+	current_traj_flag = false;
 	break;
     case 'e': // SPEED_REQ
 	len = SHORT_PACKET_SIZE;
+	expect_data_flag = true;
+	current_traj_flag = false;
+	break;
+    case 'z': // CURRENT_TRAJ_REQ
+	len = SHORT_PACKET_SIZE;
+	expect_data_flag = true;
+	current_traj_flag = true;
+	tcflush(fd, TCIFLUSH);
 	break;
     // case 'k': // KIN_CON
     // 	break;
@@ -251,7 +423,7 @@ void send_data(int id, unsigned char *DataString, unsigned int len)
     unsigned int checksum = 0;
 
     // Initialize the packet to all zeros:
-    memset(packet,0,sizeof(packet));
+    memset(packet, 0, sizeof(packet));
 
     address = id;
 
@@ -445,10 +617,15 @@ int main(int argc, char** argv)
     // create a timer for the keyboard node:
     ros::Timer kb_timer = n.createTimer(ros::Duration(0.1), keyboardcb);
 
-    // Setup publishers and subscribers:
+    // create timer for checking on incoming serial data
+    ros::Timer serial_timer = n.createTimer(ros::Duration(0.001), serial_incomingcb);
+
+    // setup publishers
     std::stringstream ss;
     ss << "serviced_values";
     pub = n.advertise<geometry_msgs::PointStamped> (ss.str(), 100);
+    vec_pub = n.advertise<std_msgs::UInt16MultiArray> ("current_trajectory", 1);
+    // setup subscribers
     ss.str("");
     ss << "serial_commands";
     sub = n.subscribe(ss.str(), 10, send_command_cb);
