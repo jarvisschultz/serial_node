@@ -103,15 +103,9 @@ if __name__ == "__main__":
     rospy.logdebug("Starting serial sorting node")
     rospy.init_node('sorting_serial', log_level=rospy.INFO)
 
-    ## find mapping between robot namespaces and their indices:
-    cmd = 'rospack find puppeteer_control'
-    p = os.popen(cmd, "r")
-    direct = p.readline()[0:-1]
-    p.close()
-    fname = os.path.join(direct,"launch/multi_nodelet.launch")
     # did we provide a filename?
     parser = argparse.ArgumentParser()
-    parser.add_argument("file", nargs='?', default=fname,
+    parser.add_argument("file",
                         help="name of a launch file to read in")
     args = parser.parse_args()
     rospy.loginfo("Input file = %s"%os.path.abspath(args.file))
@@ -147,10 +141,16 @@ if __name__ == "__main__":
     
     # now write a file that stores data in a text file that
     # can be read in by a launch file
-    direct = sys.argv[0]
+
+    # get base directory of this package:
+    cmd = 'rospack find serial_node'
+    p = os.popen(cmd, "r")
+    direct = p.readline()
+    p.close()
     tmp = direct[0:direct.find("src")]
     tmp = os.path.join(tmp, "data", os.path.splitext(os.path.basename(args.file))[0]+
                        "_serial_device_dict.xml")
+    rospy.loginfo("Saving data to %s"%tmp)
     f = open(tmp, 'w')
     for key in D.keys():
         for v in dat:
