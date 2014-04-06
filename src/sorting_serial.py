@@ -69,6 +69,7 @@ def read_com(port='/dev/ttyUSB0'):
 
 
 def get_robot_indices(fname):
+
     """
     This function takes in a filename.  It parses that filename
     (presumably) a particular launch file.  It then returns a
@@ -91,9 +92,13 @@ def get_robot_indices(fname):
                     sys.exit(1)
                 mat = re.match(
                     "(.*)(robot_index)(.*)(value)(.*)(\")(.*)(\")", l)
-            num = int(mat.groups()[-2])
+            val = mat.groups()[-2]
+            if val.rfind('arg') == -1:
+                num = int(val)
+            else:
+                rospy.logwarn("Could not determine index for namespace = %s"%ns)
+                num = -1
             D[ns] = num
-
     return D
     
     
